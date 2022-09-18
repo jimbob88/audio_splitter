@@ -19,8 +19,6 @@ class MainWindow(tk.Frame):
         column_names = {
             'file_name': 'File Name',
             'german': 'German',
-            'join': 'Join',
-            'out_name': 'Out Name'
         }
 
         self.treeview = ttk.Treeview(self.master, columns=tuple(column_names.keys()), show='headings')
@@ -48,7 +46,6 @@ class MainWindow(tk.Frame):
     def _configure_key_bindings(self):
         self.treeview.bind('<space>', self.play_audio)
         self.treeview.bind('d', self.mark_german)
-        self.treeview.bind('j', self.mark_join)
 
     def _configure_menubar(self):
         menubar = tk.Menu(self.master)
@@ -69,14 +66,11 @@ class MainWindow(tk.Frame):
             diarized = diarization.diarize_files(list(self.selected_folder.glob('*.mp3')),
                                                  {"Deutsch": Path("all_deu.mp3"), "Englisch": Path("all_eng.mp3")},
                                                  True, True)
-            previous = None
             for file, similarity in diarized:
-                current = similarity['Deutsch'] > similarity['Englisch']
-                self.available_mp3s.append([file.name, current, current == previous, ''])
-                previous = current
+                self.available_mp3s.append([file.name, similarity['Deutsch'] > similarity['Englisch']])
         else:
             for file in self.selected_folder.glob('*.mp3'):
-                self.available_mp3s.append([file.name, False, False, ''])
+                self.available_mp3s.append([file.name, False])
 
         self.redraw()
 
@@ -109,27 +103,12 @@ class MainWindow(tk.Frame):
         self.treeview.focus(child)
         self.treeview.selection_set(child)
 
-    def mark_join(self, event: tk.Event):
-        idx = 0
-        for selection in self.treeview.selection():
-            cols = self.treeview.item(selection)['values']
-            idx = [mp3[0] == cols[0] for mp3 in self.available_mp3s].index(True)
-
-            values = self.available_mp3s[idx]
-            self.available_mp3s[idx][2] = not values[2]
-
-        self.redraw()
-
-        child = self.treeview.get_children()[idx]
-        self.treeview.focus(child)
-        self.treeview.selection_set(child)
-
     def to_dict(self):
         paths = {}
         for mp3 in self.available_mp3s:
+            print(mp3)
             paths[str((Path(self.selected_folder) / mp3[0]).absolute())] = {
-                'German': mp3[1],
-                'Join': mp3[2]
+                'German': bool(mp3[1])
             }
         return paths
 

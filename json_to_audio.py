@@ -17,8 +17,8 @@ files: List[List[Audio]] = []
 for path, prop in dataset.items():
     path = Path(path)
     audio = Audio(path, prop['German'])
-    if prop['Join']:
-        if files:
+    if files:
+        if files[-1][0].german == prop['German']:
             files[-1].append(audio)
         else:
             files.append([audio])
