@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Dict, List, Union
+from typing import Dict, List, Union, Tuple, Generator
 
 import numpy as np
 from resemblyzer import preprocess_wav, VoiceEncoder
@@ -42,11 +42,11 @@ def sim(wav: Path, wav_paths: Dict[str, Path], average: bool = False):
     return similarity_dict
 
 
-def diarize_files(paths: List[Path], speaker_paths: Dict[str, Path], average=True, progress=False) -> Dict[Path, Dict[str, Union[np.ndarray, float]]]:
+def diarize_files(paths: List[Path], speaker_paths: Dict[str, Path], average=True, progress=False) -> Generator[
+    Tuple[Path, Dict[str, Union[np.ndarray, float]]], None, None]:
     enc = VoiceEncoder("cpu")
     speaker_embeds = embed_speakers(speaker_paths, enc)
 
-    similarity_by_wav = {}
     for idx, wav_path in enumerate(paths):
         if progress:
             print(f"{(idx / len(paths)) * 100:.1f}%")
@@ -58,9 +58,7 @@ def diarize_files(paths: List[Path], speaker_paths: Dict[str, Path], average=Tru
                 for name, probabilities in similarity_dict.items()
             }
 
-        similarity_by_wav[wav_path] = similarity_dict
-
-    return similarity_by_wav
+        yield wav_path, similarity_dict
 
 
 def main():
