@@ -1,6 +1,7 @@
 import json
 import tkinter as tk
 import tkinter.ttk as ttk
+import typing
 from pathlib import Path
 from tkinter import filedialog, messagebox
 from typing import List
@@ -10,7 +11,7 @@ from playsound import playsound
 import diarization
 
 
-def create_diarized_table(folder: Path, primary_language_training_data: Path, secondary_language_training_data: Path):
+def create_diarized_table(files: List[Path], primary_language_training_data: Path, secondary_language_training_data: Path):
     """Creates a table with primary language model
 
      TODO: Make generator function
@@ -19,14 +20,38 @@ def create_diarized_table(folder: Path, primary_language_training_data: Path, se
     :param primary_language_training_data: A training file [mp3 file containing examples of person speaking]
     :param secondary_language_training_data:  A training file for secondary lang [mp3 containing examples of 2nd person]
     :return: A list of [the audio file name: str, is_primary_language: bool]
-    :rtype: list[list[Union[str, bool]]]
+    :rtype: Generator[list[Union[str, bool]]]
 
     """
-    diarized = diarization.diarize_files(list(folder.glob('*.mp3')),
+    diarized = diarization.diarize_files(files,
                                          {"Primary": primary_language_training_data,
                                           "Secondary": secondary_language_training_data},
                                          True, True)
-    return [[file.name, similarity['Primary'] > similarity['Secondary']] for file, similarity in diarized]
+
+    return ([file.name, similarity['Primary'] > similarity['Secondary']] for file, similarity in diarized)
+
+
+T = typing.TypeVar('T')
+
+
+def progress_generator(max_len: int, generator: typing.Generator[T, None, None], text="Loading...") -> List[T]:
+    """Converts a generator to a list with progress"""
+    popup = tk.Toplevel()
+    tk.Label(popup, text=text).grid(row=0, column=0, sticky='ew')
+
+    progress_var = tk.DoubleVar()
+    progress_bar = ttk.Progressbar(popup, variable=progress_var, maximum=max_len)
+    progress_bar.grid(row=1, column=0, sticky='ew')
+
+    popup.pack_slaves()
+
+    as_list = []
+    for row in generator:
+        progress_var.set(progress_var.get() + 1)
+        as_list.append(row)
+        popup.update()
+    popup.destroy()
+    return as_list
 
 
 class MainWindow(tk.Frame):
@@ -82,13 +107,19 @@ class MainWindow(tk.Frame):
 
     def open_folder(self):
         self.selected_folder = Path(filedialog.askdirectory())
+        mp3_files = list(self.selected_folder.glob('*.mp3'))
 
         if messagebox.askyesno('AI?', 'Try and discover using the AI [diarization]?'):
-            self.available_mp3s = create_diarized_table(self.selected_folder,
-                                                        Path(self.config["primary_language_training_data"]),
-                                                        Path(self.config["secondary_language_training_data"]))
+
+            table_generator = create_diarized_table(mp3_files,
+                                                    Path(self.config["primary_language_training_data"]),
+                                                    Path(self.config["secondary_language_training_data"]))
+
+            self.available_mp3s = progress_generator(len(mp3_files),
+                                                     table_generator,
+                                                     text="Performing text diarization")
         else:
-            self.available_mp3s = [[file.name, False] for file in self.selected_folder.glob('*.mp3')]
+            self.available_mp3s = [[file.name, False] for file in mp3_files]
 
         self.redraw()
 
@@ -140,7 +171,7 @@ class MainWindow(tk.Frame):
 
         This works by ignoring any values that are marked as joined
         """
-        return sum(bool(mp3[1] and (idx == 0 or not self.available_mp3s[-1][1])) for idx, mp3 in enumerate(self.available_mp3s))
+        return sum(bool(mp3[1] and (idx == 0 or not self.available_mp3s[idx - 1][1])) for idx, mp3 in enumerate(self.available_mp3s))
 
 
 def main():
