@@ -10,15 +10,34 @@ from playsound import playsound
 import diarization
 
 
+def create_diarized_table(folder: Path, primary_language_training_data: Path, secondary_language_training_data: Path):
+    """Creates a table with primary language model
+
+    :param folder: Where to search for mp3 files
+    :param primary_language_training_data: A training file [mp3 file containing examples of person speaking]
+    :param secondary_language_training_data:  A training file for secondary lang [mp3 containing examples of 2nd person]
+    :return: A list of [the audio file name: str, is_primary_language: bool]
+    :rtype: list[list[Union[str, bool]]]
+
+    """
+    diarized = diarization.diarize_files(list(folder.glob('*.mp3')),
+                                         {"Primary": primary_language_training_data,
+                                          "Secondary": secondary_language_training_data},
+                                         True, True)
+    return [[file.name, similarity['Primary'] > similarity['Secondary']] for file, similarity in diarized]
+
+
 class MainWindow(tk.Frame):
     master: tk.Tk
 
     def __init__(self, master: tk.Tk = None):
         super().__init__(master)
 
+        self.config = json.load(Path('config.json').open())
+
         column_names = {
             'file_name': 'File Name',
-            'german': 'German',
+            'primary': self.config['primary_lang_alias'],
         }
 
         self.treeview = ttk.Treeview(self.master, columns=tuple(column_names.keys()), show='headings')
@@ -30,11 +49,11 @@ class MainWindow(tk.Frame):
 
         scrollbar = ttk.Scrollbar(self.master, orient=tk.VERTICAL, command=self.treeview.yview)
         self.treeview.configure(yscroll=scrollbar.set)
-        self.treeview.tag_configure('german', background='grey')
-        self.treeview.tag_configure('englisch', background='orange')
+        self.treeview.tag_configure('primary', background='grey')
+        self.treeview.tag_configure('secondary', background='orange')
         scrollbar.grid(row=0, column=1, sticky='ns')
 
-        self.german_count_lbl = tk.Label(self.master, text='German Count: ')
+        self.german_count_lbl = tk.Label(self.master, text='Primary Count: ')
         self.german_count_lbl.grid(row=1, column=0, columnspan=1, sticky='ew')
 
         self._configure_menubar()
@@ -45,7 +64,7 @@ class MainWindow(tk.Frame):
 
     def _configure_key_bindings(self):
         self.treeview.bind('<space>', self.play_audio)
-        self.treeview.bind('d', self.mark_german)
+        self.treeview.bind('d', self.mark_primary)
 
     def _configure_menubar(self):
         menubar = tk.Menu(self.master)
@@ -59,28 +78,24 @@ class MainWindow(tk.Frame):
 
     def open_folder(self):
         self.selected_folder = Path(filedialog.askdirectory())
-        self.available_mp3s = []
-        use_ai = messagebox.askyesno('AI?', 'Try and discover using the AI?')
+        use_ai = messagebox.askyesno('AI?', 'Try and discover using the AI [diarization]?')
 
         if use_ai:
-            diarized = diarization.diarize_files(list(self.selected_folder.glob('*.mp3')),
-                                                 {"Deutsch": Path("all_deu.mp3"), "Englisch": Path("all_eng.mp3")},
-                                                 True, True)
-            for file, similarity in diarized:
-                self.available_mp3s.append([file.name, similarity['Deutsch'] > similarity['Englisch']])
+            self.available_mp3s = create_diarized_table(self.selected_folder,
+                                                        Path(self.config["primary_language_training_data"]),
+                                                        Path(self.config["secondary_language_training_data"]))
         else:
-            for file in self.selected_folder.glob('*.mp3'):
-                self.available_mp3s.append([file.name, False])
+            self.available_mp3s = [[file.name, False] for file in self.selected_folder.glob('*.mp3')]
 
         self.redraw()
 
     def redraw(self):
         self.treeview.delete(*self.treeview.get_children())
         for mp3 in self.available_mp3s:
-            tags = ('german' if mp3[1] else 'englisch',)
+            tags = ('primary' if mp3[1] else 'secondary',)
             self.treeview.insert('', tk.END, values=tuple(mp3), tags=tags)
 
-        self.german_count_lbl['text'] = f'German Files: {self.count_german()}'
+        self.german_count_lbl['text'] = f'Primary Files: {self.count_primary()}'
 
     def play_audio(self, event: tk.Event):
         for selection in self.treeview.selection():
@@ -88,7 +103,7 @@ class MainWindow(tk.Frame):
             print(self.selected_folder / Path(cols[0]))
             playsound(str(Path(self.selected_folder / cols[0]).absolute()), block=False)
 
-    def mark_german(self, event: tk.Event):
+    def mark_primary(self, event: tk.Event):
         idx = 0
         for selection in self.treeview.selection():
             cols = self.treeview.item(selection)['values']
@@ -106,17 +121,27 @@ class MainWindow(tk.Frame):
     def to_dict(self):
         paths = {}
         for mp3 in self.available_mp3s:
-            print(mp3)
-            paths[str((Path(self.selected_folder) / mp3[0]).absolute())] = {
-                'German': bool(mp3[1])
+            path = str((Path(self.selected_folder) / mp3[0]).absolute())
+            paths[path] = {
+                'is_primary': bool(mp3[1])
             }
         return paths
 
     def export_json(self):
-        json.dump(self.to_dict(), Path('out.json').open('w', encoding='utf-8'))
+        """Converts the dict representation into a json file [filename defined in config.json]"""
+        file = Path(self.config["default_out_filename"]).open('w', encoding='utf-8')
+        json.dump(self.to_dict(), file)
 
-    def count_german(self):
-        return sum(int(mp3[1]) for mp3 in self.available_mp3s)
+    def count_primary(self):
+        """Calculates how many primary values there are
+
+        This works by ignoring any values that are marked as joined
+        """
+        count = 0
+        for idx, mp3 in enumerate(self.available_mp3s):
+            if mp3[1] and (idx == 0 or not self.available_mp3s[-1][1]):
+                count += 1
+        return count
 
 
 def main():

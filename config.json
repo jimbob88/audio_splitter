@@ -1,0 +1,7 @@
+{
+  "default_out_filename": "out.json",
+  "primary_lang_alias": "German",
+  "secondary_lang_alias": "English",
+  "primary_language_training_data": "all_deu.mp3",
+  "secondary_language_training_data": "all_eng.mp3"
+}
