@@ -13,6 +13,8 @@ import diarization
 def create_diarized_table(folder: Path, primary_language_training_data: Path, secondary_language_training_data: Path):
     """Creates a table with primary language model
 
+     TODO: Make generator function
+
     :param folder: Where to search for mp3 files
     :param primary_language_training_data: A training file [mp3 file containing examples of person speaking]
     :param secondary_language_training_data:  A training file for secondary lang [mp3 containing examples of 2nd person]
@@ -46,6 +48,8 @@ class MainWindow(tk.Frame):
             self.treeview.heading(column, text=header)
 
         self.treeview.grid(row=0, column=0, sticky='nsew')
+        self.master.columnconfigure(0, weight=1)
+        self.master.rowconfigure(0, weight=1)
 
         scrollbar = ttk.Scrollbar(self.master, orient=tk.VERTICAL, command=self.treeview.yview)
         self.treeview.configure(yscroll=scrollbar.set)
@@ -78,9 +82,8 @@ class MainWindow(tk.Frame):
 
     def open_folder(self):
         self.selected_folder = Path(filedialog.askdirectory())
-        use_ai = messagebox.askyesno('AI?', 'Try and discover using the AI [diarization]?')
 
-        if use_ai:
+        if messagebox.askyesno('AI?', 'Try and discover using the AI [diarization]?'):
             self.available_mp3s = create_diarized_table(self.selected_folder,
                                                         Path(self.config["primary_language_training_data"]),
                                                         Path(self.config["secondary_language_training_data"]))
@@ -137,11 +140,7 @@ class MainWindow(tk.Frame):
 
         This works by ignoring any values that are marked as joined
         """
-        count = 0
-        for idx, mp3 in enumerate(self.available_mp3s):
-            if mp3[1] and (idx == 0 or not self.available_mp3s[-1][1]):
-                count += 1
-        return count
+        return sum(bool(mp3[1] and (idx == 0 or not self.available_mp3s[-1][1])) for idx, mp3 in enumerate(self.available_mp3s))
 
 
 def main():
